@@ -64,6 +64,30 @@ class Database:
             connection.commit()
             
             logger.info("✓ Table 'gambler' ready")
+            
+            create_stake_transactions_table = """
+            CREATE TABLE IF NOT EXISTS stake_transactions (
+                transaction_id INT PRIMARY KEY AUTO_INCREMENT,
+                gambler_id INT NOT NULL,
+                session_id INT,
+                bet_id INT,
+                game_id INT,
+                transaction_type VARCHAR(50) NOT NULL,
+                amount DECIMAL(10, 2) NOT NULL,
+                balance_before DECIMAL(10, 2) NOT NULL,
+                balance_after DECIMAL(10, 2) NOT NULL,
+                transaction_ref VARCHAR(100),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (gambler_id) REFERENCES gambler(gambler_id) ON DELETE CASCADE,
+                INDEX idx_gambler_id (gambler_id),
+                INDEX idx_created_at (created_at)
+            )
+            """
+            
+            cursor.execute(create_stake_transactions_table)
+            connection.commit()
+            
+            logger.info("✓ Table 'stake_transactions' ready")
         
         except Error as e:
             logger.error(f"✗ Error creating table: {e}")

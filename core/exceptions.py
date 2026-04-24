@@ -11,3 +11,13 @@ class DatabaseException(Exception):
 class GamblerNotFoundException(Exception):
     """Exception raised when gambler is not found"""
     pass
+
+
+class StakeNotFoundException(Exception):
+    """Exception raised when stake/transaction is not found"""
+    pass
+
+
+class InsufficientStakeException(Exception):
+    """Exception raised when stake is insufficient"""
+    pass
