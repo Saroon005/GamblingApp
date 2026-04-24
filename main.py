@@ -6,6 +6,7 @@ from modules.betting.service import BettingService
 from modules.session.service import SessionService
 from modules.winloss.service import WinLossService
 from modules.validation import InputValidator
+from modules.interaction import UIDisplay
 from core.logger import logger
 from core.exceptions import ValidationException, DatabaseException
 from decimal import Decimal
@@ -21,38 +22,24 @@ class GamblingCLI:
     
     def show_menu(self):
         """Display main menu"""
-        print("\n" + "=" * 60)
-        print("🎰 GAMBLING SIMULATION SYSTEM")
-        print("=" * 60)
-        print("1. Create Gambler")
-        print("2. Select Gambler")
-        print("3. Place Bet")
-        print("4. Start Session")
-        print("5. Show Statistics")
-        print("6. Exit")
-        print("=" * 60)
+        UIDisplay.show_main_menu()
     
     def create_gambler(self):
-        """Create a new gambler with input validation"""
-        print("\n📝 CREATE GAMBLER")
-        print("-" * 60)
+        """Create a new gambler with input validation and UI display"""
+        UIDisplay.show_section_header("📝 CREATE GAMBLER")
         
         try:
-            username = input("Username: ").strip()
-            full_name = input("Full Name: ").strip()
-            email = input("Email: ").strip()
-            initial_stake_input = input("Initial Stake ($): ").strip()
-            win_threshold_input = input("Win Threshold ($): ").strip()
-            loss_threshold_input = input("Loss Threshold ($): ").strip()
-            min_required_input = input("Min Bet Amount ($): ").strip()
+            # Get all inputs
+            inputs = UIDisplay.prompt_gambler_input()
             
-            # Use centralized validator for all inputs
+            # Validate all inputs together
             validated = InputValidator.validate_gambler_creation(
-                username, full_name, email,
-                initial_stake_input, win_threshold_input, 
-                loss_threshold_input, min_required_input
+                inputs['username'], inputs['full_name'], inputs['email'],
+                inputs['initial_stake'], inputs['win_threshold'], 
+                inputs['loss_threshold'], inputs['min_bet']
             )
             
+            # Create gambler profile
             gambler_data = GamblerCreate(
                 username=validated['username'],
                 full_name=validated['full_name'],
@@ -69,212 +56,229 @@ class GamblingCLI:
             self.current_gambler_id = gambler['gambler_id']
             self.current_gambler = gambler
             
-            print(f"\n✓ Gambler created: {gambler['username']} (ID: {gambler['gambler_id']})")
+            UIDisplay.show_success(
+                f"Gambler '{gambler['username']}' created (ID: {gambler['gambler_id']})"
+            )
         
         except ValidationException as e:
-            print(f"✗ Validation Error: {e}")
-            logger.warning(f"Validation error during gambler creation: {e}")
+            UIDisplay.show_validation_error(str(e))
+            logger.warning(f"Validation error: {e}")
         except DatabaseException as e:
-            print(f"✗ Database Error: {e}")
-            logger.error(f"Database error during gambler creation: {e}")
+            UIDisplay.show_database_error(str(e))
+            logger.error(f"Database error: {e}")
         except Exception as e:
-            print(f"✗ Unexpected Error: {e}")
-            logger.error(f"Unexpected error during gambler creation: {e}")
+            UIDisplay.show_error("Unexpected Error", str(e))
+            logger.error(f"Unexpected error: {e}")
     
     def select_gambler(self):
-        """Select a gambler by ID"""
-        print("\n👤 SELECT GAMBLER")
-        print("-" * 60)
+        """Select a gambler by ID with clean UI"""
+        UIDisplay.show_section_header("👤 SELECT GAMBLER")
         
         try:
-            gambler_id_input = input("Gambler ID: ").strip()
+            gambler_id_input = UIDisplay.prompt_gambler_id()
             gambler_id = InputValidator.validate_positive_integer(gambler_id_input, "Gambler ID")
             
             gambler = GamblerService.get_gambler_profile(gambler_id)
+            stake = StakeService.get_current_balance(gambler_id)
             
             self.current_gambler_id = gambler_id
             self.current_gambler = gambler
             
-            stake = StakeService.get_current_balance(gambler_id)
-            print(f"\n✓ Selected: {gambler['username']} | Stake: ${stake}")
+            UIDisplay.show_gambler_selected(gambler['username'], gambler_id, stake)
         
         except ValidationException as e:
-            print(f"✗ Validation Error: {e}")
-            logger.warning(f"Validation error selecting gambler: {e}")
+            UIDisplay.show_validation_error(str(e))
+            logger.warning(f"Validation error: {e}")
         except Exception as e:
-            print(f"✗ Error: {e}")
+            UIDisplay.show_error("Error", str(e))
             logger.error(f"Error selecting gambler: {e}")
     
     def place_bet(self):
-        """Place a single bet with validation"""
-        print("\n💰 PLACE BET")
-        print("-" * 60)
+        """Place a single bet with clean outcome display"""
+        UIDisplay.show_section_header("💰 PLACE BET")
         
         if not self.current_gambler_id:
-            print("✗ No gambler selected")
+            UIDisplay.show_no_gambler_selected()
             return
         
         try:
             stake = StakeService.get_current_balance(self.current_gambler_id)
-            print(f"Current Stake: ${stake}")
-            
-            bet_amount_input = input("Bet Amount ($): ").strip()
-            probability_input = input("Win Probability (0-1): ").strip()
+            UIDisplay.show_current_status(self.current_gambler['username'], stake)
             
             # Validate inputs
-            amount = InputValidator.validate_bet_amount(bet_amount_input, stake, "Bet Amount")
-            probability = InputValidator.validate_probability(probability_input, "Win Probability")
+            bet_amount_input = UIDisplay.prompt_bet_amount()
+            amount = InputValidator.validate_bet_amount(bet_amount_input, stake)
             
+            probability_input = UIDisplay.prompt_probability()
+            probability = InputValidator.validate_probability(probability_input)
+            
+            # Place and resolve bet
             result = BettingService.place_and_resolve_bet(
                 self.current_gambler_id, amount, probability
             )
             
-            status = "🎉 WIN" if result['is_win'] else "❌ LOSS"
-            new_stake = result['stake_after']
-            print(f"\n{status} | New Stake: ${new_stake}")
+            # Display outcome
+            UIDisplay.show_bet_result(
+                result['is_win'], amount, result['stake_after']
+            )
         
         except ValidationException as e:
-            print(f"✗ Validation Error: {e}")
-            logger.warning(f"Validation error placing bet: {e}")
+            UIDisplay.show_validation_error(str(e))
+            logger.warning(f"Validation error: {e}")
         except DatabaseException as e:
-            print(f"✗ Database Error: {e}")
-            logger.error(f"Database error placing bet: {e}")
+            UIDisplay.show_database_error(str(e))
+            logger.error(f"Database error: {e}")
         except Exception as e:
-            print(f"✗ Error: {e}")
+            UIDisplay.show_error("Error", str(e))
             logger.error(f"Error placing bet: {e}")
     
     def start_session(self):
-        """Start a betting session with validation and automatic win/loss tracking"""
-        print("\n🎮 START SESSION")
-        print("-" * 60)
+        """Start a betting session with clean UI for bet outcomes and summary"""
+        UIDisplay.show_section_header("🎮 START SESSION")
         
         if not self.current_gambler_id:
-            print("✗ No gambler selected")
+            UIDisplay.show_no_gambler_selected()
             return
         
         try:
             gambler = self.current_gambler
             stake = StakeService.get_current_balance(self.current_gambler_id)
             
-            print(f"Gambler: {gambler['username']}")
-            print(f"Current Stake: ${stake}")
-            print(f"Win Threshold: ${gambler['win_threshold']}")
-            print(f"Loss Threshold: ${gambler['loss_threshold']}")
-            print("\nEnter 'stop' to end session\n")
+            # Display session info
+            UIDisplay.show_session_info(
+                stake, 
+                Decimal(gambler['win_threshold']),
+                Decimal(gambler['loss_threshold'])
+            )
             
-            # Start session and win/loss tracker
+            # Start session
             session = SessionService.start_session(self.current_gambler_id)
             session_id = session['session_id']
             tracker = WinLossService()
             bet_count = 0
             
+            # Session loop
             while True:
                 stake = BettingService.get_current_stake(self.current_gambler_id)
-                print(f"\n[Bet #{bet_count + 1}] Stake: ${stake}")
+                UIDisplay.show_bet_input_prompt(bet_count + 1, stake)
                 
-                amount_input = input("Bet ($) or 'stop': ").strip()
-                if amount_input.lower() == "stop":
+                # Get bet inputs
+                amount_input, prob_input = UIDisplay.prompt_session_bet()
+                if amount_input is None:
                     break
                 
                 try:
-                    # Validate bet amount
-                    amount = InputValidator.validate_bet_amount(amount_input, stake, "Bet Amount")
+                    # Validate inputs
+                    amount = InputValidator.validate_bet_amount(amount_input, stake)
+                    prob = InputValidator.validate_probability(prob_input)
                     
-                    prob_input = input("Probability (0-1): ").strip()
-                    # Validate probability
-                    prob = InputValidator.validate_probability(prob_input, "Win Probability")
-                    
-                    # Place bet
+                    # Place and resolve bet
                     result = BettingService.place_and_resolve_bet(
                         self.current_gambler_id, amount, prob
                     )
                     
                     # Record in session and track win/loss
                     SessionService.record_bet_in_session(session_id)
-                    tracker.record_game_outcome(
+                    outcome = tracker.record_game_outcome(
                         session_id, self.current_gambler_id, result['bet_id'],
                         result['is_win'], amount, result['stake_before'], 
                         result['stake_after']
                     )
                     
-                    status = "🎉 WIN" if result['is_win'] else "❌ LOSS"
-                    print(f"{status} | Stake: ${result['stake_after']}")
+                    # Display outcome with streak info
+                    if result['is_win']:
+                        UIDisplay.show_win_outcome(
+                            amount, result['stake_after'],
+                            outcome['win_streak'], outcome['loss_streak']
+                        )
+                    else:
+                        UIDisplay.show_loss_outcome(
+                            amount, result['stake_after'],
+                            outcome['win_streak'], outcome['loss_streak']
+                        )
                     
                     bet_count += 1
                     
                     # Check thresholds
                     if result['stake_after'] >= Decimal(gambler['win_threshold']):
-                        print(f"\n🏆 WIN THRESHOLD REACHED!")
+                        UIDisplay.show_win_threshold_reached()
                         SessionService.end_session(session_id, "WIN_THRESHOLD")
                         break
                     elif result['stake_after'] <= Decimal(gambler['loss_threshold']):
-                        print(f"\n💔 LOSS THRESHOLD REACHED!")
+                        UIDisplay.show_loss_threshold_reached()
                         SessionService.end_session(session_id, "LOSS_THRESHOLD")
                         break
                 
                 except ValidationException as e:
-                    print(f"✗ Validation Error: {e}")
-                    logger.warning(f"Validation error in session bet: {e}")
+                    UIDisplay.show_validation_error(str(e))
+                    logger.warning(f"Validation error: {e}")
                 except DatabaseException as e:
-                    print(f"✗ Database Error: {e}")
-                    logger.error(f"Database error in session bet: {e}")
+                    UIDisplay.show_database_error(str(e))
+                    logger.error(f"Database error: {e}")
             
-            # End session if not already ended
+            # End session and show summary
             if bet_count > 0:
                 try:
                     SessionService.end_session(session_id, "MANUAL")
                     stats = tracker.get_session_summary(session_id)
                     
-                    print("\n" + "=" * 60)
-                    print("SESSION SUMMARY")
-                    print("=" * 60)
-                    print(f"Total Bets: {stats['total_games']}")
-                    print(f"Wins: {stats['total_wins']} | Losses: {stats['total_losses']}")
-                    print(f"Win Rate: {stats['win_rate']:.1f}%")
-                    print(f"Current Streak: {stats['current_win_streak'] if stats['current_win_streak'] > 0 else stats['current_loss_streak']} "
-                          f"({'W' if stats['current_win_streak'] > 0 else 'L'})")
+                    UIDisplay.show_session_summary(
+                        stats['total_games'],
+                        stats['total_wins'],
+                        stats['total_losses'],
+                        stats['win_rate'],
+                        result['stake_after'],
+                        stats['current_win_streak'],
+                        stats['current_loss_streak']
+                    )
                 except Exception as e:
-                    print(f"✗ Error ending session: {e}")
+                    UIDisplay.show_error("Error ending session", str(e))
                     logger.error(f"Error ending session: {e}")
+            else:
+                UIDisplay.show_warning("No bets placed. Session cancelled.")
         
         except DatabaseException as e:
-            print(f"✗ Database Error: {e}")
-            logger.error(f"Database error during session: {e}")
+            UIDisplay.show_database_error(str(e))
+            logger.error(f"Database error: {e}")
         except Exception as e:
-            print(f"✗ Unexpected Error: {e}")
-            logger.error(f"Unexpected error during session: {e}")
+            UIDisplay.show_error("Unexpected Error", str(e))
+            logger.error(f"Unexpected error: {e}")
     
     def show_stats(self):
-        """Show simple statistics"""
-        print("\n📊 STATISTICS")
-        print("-" * 60)
+        """Show gambler statistics with clean UI"""
+        UIDisplay.show_section_header("📈 GAMBLER STATISTICS")
         
         if not self.current_gambler_id:
-            print("✗ No gambler selected")
+            UIDisplay.show_no_gambler_selected()
             return
         
         try:
             stake = StakeService.get_current_balance(self.current_gambler_id)
             stats = WinLossService.get_gambler_overall_stats(self.current_gambler_id)
             
-            print(f"Current Stake: ${stake}")
-            print(f"Total Games: {stats['total_games']}")
-            print(f"Wins: {stats['total_wins']} | Losses: {stats['total_losses']}")
-            print(f"Win Rate: {stats['win_rate']:.1f}%")
-            print(f"Total Net Change: ${stats['total_net_change']}")
+            UIDisplay.show_gambler_stats(
+                stake,
+                stats['total_games'],
+                stats['total_wins'],
+                stats['total_losses'],
+                stats['win_rate'],
+                stats['total_net_change']
+            )
         
         except DatabaseException as e:
-            print(f"✗ Database Error: {e}")
-            logger.error(f"Database error retrieving stats: {e}")
+            UIDisplay.show_database_error(str(e))
+            logger.error(f"Database error: {e}")
         except Exception as e:
-            print(f"✗ Error: {e}")
+            UIDisplay.show_error("Error", str(e))
             logger.error(f"Error retrieving stats: {e}")
     
     def run(self):
-        """Run CLI"""
+        """Run the gambling simulation CLI"""
+        UIDisplay.show_welcome()
+        
         while True:
             self.show_menu()
-            choice = input("\nChoice (1-6): ").strip()
+            choice = UIDisplay.prompt_menu_choice()
             
             match choice:
                 case "1":
@@ -288,10 +292,10 @@ class GamblingCLI:
                 case "5":
                     self.show_stats()
                 case "6":
-                    print("\n👋 Goodbye!\n")
+                    UIDisplay.show_goodbye()
                     break
                 case _:
-                    print("✗ Invalid choice")
+                    UIDisplay.show_invalid_choice()
 
 
 if __name__ == "__main__":
