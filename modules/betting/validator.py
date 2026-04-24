@@ -1,8 +1,12 @@
+"""Betting-specific validation - uses centralized InputValidator"""
+
 from decimal import Decimal
 from core.exceptions import ValidationException
+from modules.validation import InputValidator
 
 
 class BettingValidator:
+    """Betting validation using centralized InputValidator"""
     
     @staticmethod
     def validate_place_bet(gambler_id: int, bet_amount: Decimal, win_probability: float, 
@@ -13,14 +17,16 @@ class BettingValidator:
         if gambler_id <= 0:
             errors.append("gambler_id must be a positive integer")
         
-        if bet_amount <= 0:
-            errors.append("bet_amount must be greater than 0")
+        # Use centralized validator for bet amount and probability
+        try:
+            InputValidator.validate_bet_amount(bet_amount, current_stake, "bet_amount")
+        except ValidationException as e:
+            errors.append(str(e))
         
-        if current_stake < bet_amount:
-            errors.append(f"insufficient stake: have ${current_stake}, need ${bet_amount}")
-        
-        if not (0.0 <= win_probability <= 1.0):
-            errors.append("win_probability must be between 0.0 and 1.0")
+        try:
+            InputValidator.validate_probability(win_probability, "win_probability")
+        except ValidationException as e:
+            errors.append(str(e))
         
         if errors:
             raise ValidationException("; ".join(errors))
@@ -48,15 +54,12 @@ class BettingValidator:
     
     @staticmethod
     def validate_win_probability(probability: float):
-        """Validate win probability"""
-        if not isinstance(probability, (int, float)):
-            raise ValidationException("win_probability must be a number")
-        
-        if not (0.0 <= probability <= 1.0):
-            raise ValidationException("win_probability must be between 0.0 and 1.0")
+        """Validate win probability using centralized validator"""
+        InputValidator.validate_probability(probability, "win_probability")
     
     @staticmethod
     def validate_game_index(game_index: int):
         """Validate game index"""
         if game_index <= 0:
             raise ValidationException("game_index must be a positive integer")
+

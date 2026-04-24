@@ -1,9 +1,14 @@
+"""Gambler-specific validation - uses centralized InputValidator"""
+
 from decimal import Decimal
 from core.exceptions import ValidationException
+from modules.validation import InputValidator
 import re
 
 
 class GamblerValidator:
+    """Gambler validation using centralized InputValidator"""
+    
     @staticmethod
     def validate_creation_data(data):
         """Validate gambler creation data"""
@@ -17,21 +22,27 @@ class GamblerValidator:
         if not data.full_name or len(data.full_name) < 1 or len(data.full_name) > 100:
             errors.append("full_name must be between 1 and 100 characters")
         
-        # Validate email format
-        if not data.email or not GamblerValidator._is_valid_email(data.email):
-            errors.append("email must be a valid email address")
+        # Validate email format using centralized validator
+        try:
+            InputValidator.validate_email(data.email)
+        except ValidationException as e:
+            errors.append(str(e))
         
-        # Validate initial_stake
-        if data.initial_stake <= 0:
-            errors.append("initial_stake must be greater than 0")
+        # Validate initial_stake using centralized validator
+        try:
+            InputValidator.validate_initial_stake(data.initial_stake)
+        except ValidationException as e:
+            errors.append(str(e))
         
-        # Validate win_threshold
-        if data.win_threshold <= data.initial_stake:
-            errors.append("win_threshold must be greater than initial_stake")
-        
-        # Validate loss_threshold
-        if data.loss_threshold >= data.initial_stake:
-            errors.append("loss_threshold must be less than initial_stake")
+        # Validate thresholds using centralized validator
+        try:
+            InputValidator.validate_limits(
+                data.initial_stake, 
+                data.win_threshold, 
+                data.loss_threshold
+            )
+        except ValidationException as e:
+            errors.append(str(e))
         
         # Validate min_required_stake
         if data.min_required_stake < 0:
@@ -41,13 +52,8 @@ class GamblerValidator:
             raise ValidationException("; ".join(errors))
     
     @staticmethod
-    def _is_valid_email(email):
-        """Simple email validation"""
-        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        return re.match(pattern, email) is not None
-    
-    @staticmethod
     def validate_eligibility(current_stake: Decimal, min_required_stake: Decimal) -> bool:
         """Check if gambler's current stake meets minimum requirement"""
         return current_stake >= min_required_stake
+
 

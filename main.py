@@ -5,6 +5,7 @@ from modules.stake.service import StakeService
 from modules.betting.service import BettingService
 from modules.session.service import SessionService
 from modules.winloss.service import WinLossService
+from modules.validation import InputValidator
 from core.logger import logger
 from core.exceptions import ValidationException, DatabaseException
 from decimal import Decimal
@@ -32,7 +33,7 @@ class GamblingCLI:
         print("=" * 60)
     
     def create_gambler(self):
-        """Create a new gambler"""
+        """Create a new gambler with input validation"""
         print("\n📝 CREATE GAMBLER")
         print("-" * 60)
         
@@ -40,19 +41,26 @@ class GamblingCLI:
             username = input("Username: ").strip()
             full_name = input("Full Name: ").strip()
             email = input("Email: ").strip()
-            initial_stake = Decimal(input("Initial Stake ($): ").strip())
-            win_threshold = Decimal(input("Win Threshold ($): ").strip())
-            loss_threshold = Decimal(input("Loss Threshold ($): ").strip())
-            min_required = Decimal(input("Min Bet Amount ($): ").strip())
+            initial_stake_input = input("Initial Stake ($): ").strip()
+            win_threshold_input = input("Win Threshold ($): ").strip()
+            loss_threshold_input = input("Loss Threshold ($): ").strip()
+            min_required_input = input("Min Bet Amount ($): ").strip()
+            
+            # Use centralized validator for all inputs
+            validated = InputValidator.validate_gambler_creation(
+                username, full_name, email,
+                initial_stake_input, win_threshold_input, 
+                loss_threshold_input, min_required_input
+            )
             
             gambler_data = GamblerCreate(
-                username=username,
-                full_name=full_name,
-                email=email,
-                initial_stake=initial_stake,
-                win_threshold=win_threshold,
-                loss_threshold=loss_threshold,
-                min_required_stake=min_required
+                username=validated['username'],
+                full_name=validated['full_name'],
+                email=validated['email'],
+                initial_stake=validated['initial_stake'],
+                win_threshold=validated['win_threshold'],
+                loss_threshold=validated['loss_threshold'],
+                min_required_stake=validated['min_bet_amount']
             )
             
             gambler = GamblerService.create_gambler(gambler_data)
@@ -63,11 +71,15 @@ class GamblingCLI:
             
             print(f"\n✓ Gambler created: {gambler['username']} (ID: {gambler['gambler_id']})")
         
-        except ValueError:
-            print("✗ Invalid input")
+        except ValidationException as e:
+            print(f"✗ Validation Error: {e}")
+            logger.warning(f"Validation error during gambler creation: {e}")
+        except DatabaseException as e:
+            print(f"✗ Database Error: {e}")
+            logger.error(f"Database error during gambler creation: {e}")
         except Exception as e:
-            print(f"✗ Error: {e}")
-            logger.error(f"Error creating gambler: {e}")
+            print(f"✗ Unexpected Error: {e}")
+            logger.error(f"Unexpected error during gambler creation: {e}")
     
     def select_gambler(self):
         """Select a gambler by ID"""
@@ -75,7 +87,9 @@ class GamblingCLI:
         print("-" * 60)
         
         try:
-            gambler_id = int(input("Gambler ID: ").strip())
+            gambler_id_input = input("Gambler ID: ").strip()
+            gambler_id = InputValidator.validate_positive_integer(gambler_id_input, "Gambler ID")
+            
             gambler = GamblerService.get_gambler_profile(gambler_id)
             
             self.current_gambler_id = gambler_id
@@ -84,13 +98,15 @@ class GamblingCLI:
             stake = StakeService.get_current_balance(gambler_id)
             print(f"\n✓ Selected: {gambler['username']} | Stake: ${stake}")
         
-        except ValueError:
-            print("✗ Invalid ID")
+        except ValidationException as e:
+            print(f"✗ Validation Error: {e}")
+            logger.warning(f"Validation error selecting gambler: {e}")
         except Exception as e:
             print(f"✗ Error: {e}")
+            logger.error(f"Error selecting gambler: {e}")
     
     def place_bet(self):
-        """Place a single bet"""
+        """Place a single bet with validation"""
         print("\n💰 PLACE BET")
         print("-" * 60)
         
@@ -102,8 +118,12 @@ class GamblingCLI:
             stake = StakeService.get_current_balance(self.current_gambler_id)
             print(f"Current Stake: ${stake}")
             
-            amount = Decimal(input("Bet Amount ($): ").strip())
-            probability = float(input("Win Probability (0-1): ").strip())
+            bet_amount_input = input("Bet Amount ($): ").strip()
+            probability_input = input("Win Probability (0-1): ").strip()
+            
+            # Validate inputs
+            amount = InputValidator.validate_bet_amount(bet_amount_input, stake, "Bet Amount")
+            probability = InputValidator.validate_probability(probability_input, "Win Probability")
             
             result = BettingService.place_and_resolve_bet(
                 self.current_gambler_id, amount, probability
@@ -113,13 +133,18 @@ class GamblingCLI:
             new_stake = result['stake_after']
             print(f"\n{status} | New Stake: ${new_stake}")
         
-        except ValueError:
-            print("✗ Invalid input")
+        except ValidationException as e:
+            print(f"✗ Validation Error: {e}")
+            logger.warning(f"Validation error placing bet: {e}")
+        except DatabaseException as e:
+            print(f"✗ Database Error: {e}")
+            logger.error(f"Database error placing bet: {e}")
         except Exception as e:
             print(f"✗ Error: {e}")
+            logger.error(f"Error placing bet: {e}")
     
     def start_session(self):
-        """Start a betting session with automatic win/loss tracking"""
+        """Start a betting session with validation and automatic win/loss tracking"""
         print("\n🎮 START SESSION")
         print("-" * 60)
         
@@ -152,8 +177,12 @@ class GamblingCLI:
                     break
                 
                 try:
-                    amount = Decimal(amount_input)
-                    prob = float(input("Probability (0-1): ").strip())
+                    # Validate bet amount
+                    amount = InputValidator.validate_bet_amount(amount_input, stake, "Bet Amount")
+                    
+                    prob_input = input("Probability (0-1): ").strip()
+                    # Validate probability
+                    prob = InputValidator.validate_probability(prob_input, "Win Probability")
                     
                     # Place bet
                     result = BettingService.place_and_resolve_bet(
@@ -183,26 +212,37 @@ class GamblingCLI:
                         SessionService.end_session(session_id, "LOSS_THRESHOLD")
                         break
                 
-                except ValueError:
-                    print("✗ Invalid input")
+                except ValidationException as e:
+                    print(f"✗ Validation Error: {e}")
+                    logger.warning(f"Validation error in session bet: {e}")
+                except DatabaseException as e:
+                    print(f"✗ Database Error: {e}")
+                    logger.error(f"Database error in session bet: {e}")
             
-            # End session
+            # End session if not already ended
             if bet_count > 0:
-                SessionService.end_session(session_id, "MANUAL")
-                stats = tracker.get_session_summary(session_id)
-                
-                print("\n" + "=" * 60)
-                print("SESSION SUMMARY")
-                print("=" * 60)
-                print(f"Total Bets: {stats['total_games']}")
-                print(f"Wins: {stats['total_wins']} | Losses: {stats['total_losses']}")
-                print(f"Win Rate: {stats['win_rate']:.1f}%")
-                print(f"Current Streak: {stats['current_win_streak'] if stats['current_win_streak'] > 0 else stats['current_loss_streak']} "
-                      f"({'W' if stats['current_win_streak'] > 0 else 'L'})")
+                try:
+                    SessionService.end_session(session_id, "MANUAL")
+                    stats = tracker.get_session_summary(session_id)
+                    
+                    print("\n" + "=" * 60)
+                    print("SESSION SUMMARY")
+                    print("=" * 60)
+                    print(f"Total Bets: {stats['total_games']}")
+                    print(f"Wins: {stats['total_wins']} | Losses: {stats['total_losses']}")
+                    print(f"Win Rate: {stats['win_rate']:.1f}%")
+                    print(f"Current Streak: {stats['current_win_streak'] if stats['current_win_streak'] > 0 else stats['current_loss_streak']} "
+                          f"({'W' if stats['current_win_streak'] > 0 else 'L'})")
+                except Exception as e:
+                    print(f"✗ Error ending session: {e}")
+                    logger.error(f"Error ending session: {e}")
         
+        except DatabaseException as e:
+            print(f"✗ Database Error: {e}")
+            logger.error(f"Database error during session: {e}")
         except Exception as e:
-            print(f"✗ Error: {e}")
-            logger.error(f"Session error: {e}")
+            print(f"✗ Unexpected Error: {e}")
+            logger.error(f"Unexpected error during session: {e}")
     
     def show_stats(self):
         """Show simple statistics"""
@@ -223,8 +263,12 @@ class GamblingCLI:
             print(f"Win Rate: {stats['win_rate']:.1f}%")
             print(f"Total Net Change: ${stats['total_net_change']}")
         
+        except DatabaseException as e:
+            print(f"✗ Database Error: {e}")
+            logger.error(f"Database error retrieving stats: {e}")
         except Exception as e:
             print(f"✗ Error: {e}")
+            logger.error(f"Error retrieving stats: {e}")
     
     def run(self):
         """Run CLI"""
