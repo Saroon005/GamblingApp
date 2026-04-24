@@ -21,3 +21,13 @@ class StakeNotFoundException(Exception):
 class InsufficientStakeException(Exception):
     """Exception raised when stake is insufficient"""
     pass
+
+
+class BetNotFoundException(Exception):
+    """Exception raised when bet is not found"""
+    pass
+
+
+class InvalidBetException(Exception):
+    """Exception raised when bet is invalid"""
+    pass

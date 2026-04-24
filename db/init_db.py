@@ -88,6 +88,34 @@ class Database:
             connection.commit()
             
             logger.info("✓ Table 'stake_transactions' ready")
+            
+            create_bets_table = """
+            CREATE TABLE IF NOT EXISTS bets (
+                bet_id INT PRIMARY KEY AUTO_INCREMENT,
+                gambler_id INT NOT NULL,
+                session_id INT,
+                strategy_id INT,
+                game_index INT NOT NULL,
+                bet_amount DECIMAL(10, 2) NOT NULL,
+                win_probability DECIMAL(5, 4) NOT NULL,
+                odds_type VARCHAR(50),
+                odds_value DECIMAL(10, 4),
+                potential_win DECIMAL(10, 2),
+                stake_before DECIMAL(10, 2) NOT NULL,
+                is_settled BOOLEAN DEFAULT FALSE,
+                bet_result VARCHAR(20),
+                placed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                settled_at DATETIME,
+                FOREIGN KEY (gambler_id) REFERENCES gambler(gambler_id) ON DELETE CASCADE,
+                INDEX idx_gambler_id (gambler_id),
+                INDEX idx_placed_at (placed_at)
+            )
+            """
+            
+            cursor.execute(create_bets_table)
+            connection.commit()
+            
+            logger.info("✓ Table 'bets' ready")
         
         except Error as e:
             logger.error(f"✗ Error creating table: {e}")
