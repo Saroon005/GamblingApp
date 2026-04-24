@@ -4,468 +4,233 @@ from modules.gambler.service import GamblerService
 from modules.stake.service import StakeService
 from modules.betting.service import BettingService
 from modules.session.service import SessionService
+from modules.winloss.service import WinLossService
 from core.logger import logger
 from core.exceptions import ValidationException, DatabaseException
 from decimal import Decimal
 
 
 class GamblingCLI:
-    """Command-line interface for the gambling simulation system"""
+    """Simple and clean CLI for the gambling simulation system"""
     
     def __init__(self):
         self.current_gambler_id = None
         self.current_gambler = None
         Database.init()
     
-    def clear_screen(self):
-        """Clear the screen"""
-        print("\n" * 2)
-    
-    def show_main_menu(self):
+    def show_menu(self):
         """Display main menu"""
-        print("=" * 60)
+        print("\n" + "=" * 60)
         print("🎰 GAMBLING SIMULATION SYSTEM")
         print("=" * 60)
-        print("\n1. Create Gambler")
+        print("1. Create Gambler")
         print("2. Select Gambler")
-        print("3. View Current Gambler Info")
-        print("4. Initialize Stake")
-        print("5. Place a Single Bet")
-        print("6. Place Multiple Consecutive Bets")
-        print("7. View Betting History")
-        print("8. View Stake Statistics")
-        print("9. View Betting Statistics")
-        print("10. Start Game Session")
-        print("11. Exit")
-        print("\n" + "=" * 60)
+        print("3. Place Bet")
+        print("4. Start Session")
+        print("5. Show Statistics")
+        print("6. Exit")
+        print("=" * 60)
     
     def create_gambler(self):
         """Create a new gambler"""
-        self.clear_screen()
-        print("CREATE NEW GAMBLER")
+        print("\n📝 CREATE GAMBLER")
         print("-" * 60)
         
         try:
             username = input("Username: ").strip()
             full_name = input("Full Name: ").strip()
             email = input("Email: ").strip()
+            initial_stake = Decimal(input("Initial Stake ($): ").strip())
+            win_threshold = Decimal(input("Win Threshold ($): ").strip())
+            loss_threshold = Decimal(input("Loss Threshold ($): ").strip())
+            min_required = Decimal(input("Min Bet Amount ($): ").strip())
             
-            initial_stake_input = input("Initial Stake (e.g., 1000.00): ").strip()
-            win_threshold_input = input("Win Threshold (e.g., 5000.00): ").strip()
-            loss_threshold_input = input("Loss Threshold (e.g., 100.00): ").strip()
-            min_required_input = input("Min Required Stake (e.g., 50.00): ").strip()
-            
-            gambler_create = GamblerCreate(
+            gambler_data = GamblerCreate(
                 username=username,
                 full_name=full_name,
                 email=email,
-                initial_stake=Decimal(initial_stake_input),
-                win_threshold=Decimal(win_threshold_input),
-                loss_threshold=Decimal(loss_threshold_input),
-                min_required_stake=Decimal(min_required_input)
+                initial_stake=initial_stake,
+                win_threshold=win_threshold,
+                loss_threshold=loss_threshold,
+                min_required_stake=min_required
             )
             
-            gambler = GamblerService.create_gambler(gambler_create)
+            gambler = GamblerService.create_gambler(gambler_data)
+            StakeService.initialize_stake(gambler['gambler_id'])
             
             self.current_gambler_id = gambler['gambler_id']
             self.current_gambler = gambler
             
-            print(f"\n✓ Gambler created successfully!")
-            print(f"  Gambler ID: {gambler['gambler_id']}")
-            print(f"  Username: {gambler['username']}")
-            print(f"  Initial Stake: ${gambler['initial_stake']}")
-            
-            # Auto-initialize stake
-            StakeService.initialize_stake(self.current_gambler_id)
-            print(f"✓ Stake initialized: ${gambler['initial_stake']}")
-            
-        except ValidationException as e:
-            print(f"✗ Validation Error: {e}")
-            logger.error(f"Validation error: {e}")
-        except DatabaseException as e:
-            print(f"✗ Database Error: {e}")
-            logger.error(f"Database error: {e}")
+            print(f"\n✓ Gambler created: {gambler['username']} (ID: {gambler['gambler_id']})")
+        
+        except ValueError:
+            print("✗ Invalid input")
         except Exception as e:
             print(f"✗ Error: {e}")
-            logger.error(f"Error: {e}")
-        
-        input("\nPress Enter to continue...")
+            logger.error(f"Error creating gambler: {e}")
     
     def select_gambler(self):
         """Select a gambler by ID"""
-        self.clear_screen()
-        print("SELECT GAMBLER")
+        print("\n👤 SELECT GAMBLER")
         print("-" * 60)
         
         try:
-            gambler_id_input = input("Enter Gambler ID: ").strip()
-            gambler_id = int(gambler_id_input)
-            
+            gambler_id = int(input("Gambler ID: ").strip())
             gambler = GamblerService.get_gambler_profile(gambler_id)
             
             self.current_gambler_id = gambler_id
             self.current_gambler = gambler
             
-            print(f"\n✓ Gambler selected!")
-            print(f"  ID: {gambler['gambler_id']}")
-            print(f"  Username: {gambler['username']}")
-            print(f"  Full Name: {gambler['full_name']}")
-            print(f"  Current Stake: ${gambler['current_stake']}")
-            
+            stake = StakeService.get_current_balance(gambler_id)
+            print(f"\n✓ Selected: {gambler['username']} | Stake: ${stake}")
+        
         except ValueError:
-            print("✗ Invalid gambler ID")
+            print("✗ Invalid ID")
         except Exception as e:
             print(f"✗ Error: {e}")
-            logger.error(f"Error: {e}")
-        
-        input("\nPress Enter to continue...")
     
-    def view_gambler_info(self):
-        """View current gambler information"""
-        self.clear_screen()
+    def place_bet(self):
+        """Place a single bet"""
+        print("\n💰 PLACE BET")
+        print("-" * 60)
         
         if not self.current_gambler_id:
-            print("✗ No gambler selected. Please select a gambler first.")
-            input("\nPress Enter to continue...")
+            print("✗ No gambler selected")
             return
         
         try:
-            gambler = GamblerService.get_gambler_profile(self.current_gambler_id)
-            current_stake = StakeService.get_current_balance(self.current_gambler_id)
+            stake = StakeService.get_current_balance(self.current_gambler_id)
+            print(f"Current Stake: ${stake}")
             
-            print("GAMBLER INFORMATION")
-            print("-" * 60)
-            print(f"ID: {gambler['gambler_id']}")
-            print(f"Username: {gambler['username']}")
-            print(f"Full Name: {gambler['full_name']}")
-            print(f"Email: {gambler['email']}")
-            print(f"Initial Stake: ${gambler['initial_stake']}")
-            print(f"Current Stake: ${current_stake}")
+            amount = Decimal(input("Bet Amount ($): ").strip())
+            probability = float(input("Win Probability (0-1): ").strip())
+            
+            result = BettingService.place_and_resolve_bet(
+                self.current_gambler_id, amount, probability
+            )
+            
+            status = "🎉 WIN" if result['is_win'] else "❌ LOSS"
+            new_stake = result['stake_after']
+            print(f"\n{status} | New Stake: ${new_stake}")
+        
+        except ValueError:
+            print("✗ Invalid input")
+        except Exception as e:
+            print(f"✗ Error: {e}")
+    
+    def start_session(self):
+        """Start a betting session with automatic win/loss tracking"""
+        print("\n🎮 START SESSION")
+        print("-" * 60)
+        
+        if not self.current_gambler_id:
+            print("✗ No gambler selected")
+            return
+        
+        try:
+            gambler = self.current_gambler
+            stake = StakeService.get_current_balance(self.current_gambler_id)
+            
+            print(f"Gambler: {gambler['username']}")
+            print(f"Current Stake: ${stake}")
             print(f"Win Threshold: ${gambler['win_threshold']}")
             print(f"Loss Threshold: ${gambler['loss_threshold']}")
-            print(f"Min Required Stake: ${gambler['min_required_stake']}")
-            print(f"Active: {gambler['is_active']}")
+            print("\nEnter 'stop' to end session\n")
             
-        except Exception as e:
-            print(f"✗ Error: {e}")
-            logger.error(f"Error: {e}")
-        
-        input("\nPress Enter to continue...")
-    
-    def place_single_bet(self):
-        """Place a single bet"""
-        self.clear_screen()
-        
-        if not self.current_gambler_id:
-            print("✗ No gambler selected. Please select a gambler first.")
-            input("\nPress Enter to continue...")
-            return
-        
-        try:
-            print("PLACE A SINGLE BET")
-            print("-" * 60)
-            
-            current_stake = BettingService.get_current_stake(self.current_gambler_id)
-            print(f"Current Stake: ${current_stake}\n")
-            
-            bet_amount_input = input("Bet Amount: $").strip()
-            probability_input = input("Win Probability (0.0 to 1.0, e.g., 0.5): ").strip()
-            
-            bet_amount = Decimal(bet_amount_input)
-            win_probability = float(probability_input)
-            
-            # Place and resolve bet
-            result = BettingService.place_and_resolve_bet(
-                self.current_gambler_id,
-                bet_amount,
-                win_probability
-            )
-            
-            print(f"\n{'=' * 60}")
-            print(f"BET RESULT: {'🎉 WIN!' if result['is_win'] else '❌ LOSS'}")
-            print(f"{'=' * 60}")
-            print(f"Bet Amount: ${result['bet_amount']}")
-            print(f"Stake Before: ${result['stake_before']}")
-            print(f"Stake After: ${result['stake_after']}")
-            print(f"Outcome: {'+' if result['is_win'] else '-'}${abs(result['amount_won_lost'])}")
-            
-        except ValueError:
-            print("✗ Invalid input. Please enter valid numbers.")
-        except ValidationException as e:
-            print(f"✗ Validation Error: {e}")
-        except DatabaseException as e:
-            print(f"✗ Database Error: {e}")
-        except Exception as e:
-            print(f"✗ Error: {e}")
-            logger.error(f"Error: {e}")
-        
-        input("\nPress Enter to continue...")
-    
-    def place_consecutive_bets(self):
-        """Place multiple consecutive bets"""
-        self.clear_screen()
-        
-        if not self.current_gambler_id:
-            print("✗ No gambler selected. Please select a gambler first.")
-            input("\nPress Enter to continue...")
-            return
-        
-        try:
-            print("PLACE CONSECUTIVE BETS")
-            print("-" * 60)
-            
-            current_stake = BettingService.get_current_stake(self.current_gambler_id)
-            print(f"Current Stake: ${current_stake}\n")
-            
-            num_bets_input = input("Number of Bets: ").strip()
-            bet_amount_input = input("Bet Amount per Bet: $").strip()
-            probability_input = input("Win Probability (0.0 to 1.0, e.g., 0.5): ").strip()
-            
-            num_bets = int(num_bets_input)
-            bet_amount = Decimal(bet_amount_input)
-            win_probability = float(probability_input)
-            
-            # Place consecutive bets
-            results, summary = BettingService.consecutive_bets(
-                self.current_gambler_id,
-                bet_amount,
-                win_probability,
-                num_bets
-            )
-            
-            print(f"\n{'=' * 60}")
-            print("BETTING SUMMARY")
-            print(f"{'=' * 60}")
-            
-            for i, result in enumerate(results, 1):
-                print(f"\nBet {i}: {'🎉 WIN' if result['is_win'] else '❌ LOSS'} - "
-                      f"Stake: ${result['stake_after']}")
-            
-            print(f"\n{'-' * 60}")
-            print(f"Total Bets: {summary['total_bets']}")
-            print(f"Wins: {summary['wins']}")
-            print(f"Losses: {summary['losses']}")
-            print(f"Final Stake: ${summary['final_stake']}")
-            
-        except ValueError:
-            print("✗ Invalid input. Please enter valid numbers.")
-        except ValidationException as e:
-            print(f"✗ Validation Error: {e}")
-        except DatabaseException as e:
-            print(f"✗ Database Error: {e}")
-        except Exception as e:
-            print(f"✗ Error: {e}")
-            logger.error(f"Error: {e}")
-        
-        input("\nPress Enter to continue...")
-    
-    def view_betting_history(self):
-        """View betting history"""
-        self.clear_screen()
-        
-        if not self.current_gambler_id:
-            print("✗ No gambler selected. Please select a gambler first.")
-            input("\nPress Enter to continue...")
-            return
-        
-        try:
-            history = BettingService.get_gambler_betting_history(self.current_gambler_id, limit=10)
-            
-            print("BETTING HISTORY (Last 10 Bets)")
-            print("-" * 60)
-            
-            if not history:
-                print("No bets placed yet.")
-            else:
-                for bet in history:
-                    status = f"{'✓ SET' if bet['is_settled'] else '‣ UNSETTLED'}"
-                    result = f"{bet['bet_result']}" if bet['bet_result'] else "PENDING"
-                    print(f"\nBet {bet['bet_id']}: ${bet['bet_amount']} @ {bet['win_probability']:.1%} "
-                          f"- {status} ({result})")
-            
-        except DatabaseException as e:
-            print(f"✗ Database Error: {e}")
-        except Exception as e:
-            print(f"✗ Error: {e}")
-            logger.error(f"Error: {e}")
-        
-        input("\nPress Enter to continue...")
-    
-    def view_stake_statistics(self):
-        """View stake statistics"""
-        self.clear_screen()
-        
-        if not self.current_gambler_id:
-            print("✗ No gambler selected. Please select a gambler first.")
-            input("\nPress Enter to continue...")
-            return
-        
-        try:
-            stats = StakeService.get_stake_statistics(self.current_gambler_id)
-            
-            print("STAKE STATISTICS")
-            print("-" * 60)
-            print(f"Initial Balance: ${stats['initial_balance']}")
-            print(f"Current Balance: ${stats['current_balance']}")
-            print(f"Peak Balance: ${stats['peak_balance']}")
-            print(f"Lowest Balance: ${stats['lowest_balance']}")
-            print(f"Net Change: ${stats['net_change']}")
-            print(f"Volatility: ${stats['volatility']}")
-            print(f"Total Transactions: {stats['total_transactions']}")
-            print(f"Wins: {stats['win_count']}")
-            print(f"Losses: {stats['loss_count']}")
-            print(f"Deposits: {stats['deposit_count']}")
-            print(f"Withdrawals: {stats['withdrawal_count']}")
-            
-        except DatabaseException as e:
-            print(f"✗ Database Error: {e}")
-        except Exception as e:
-            print(f"✗ Error: {e}")
-            logger.error(f"Error: {e}")
-        
-        input("\nPress Enter to continue...")
-    
-    def view_betting_statistics(self):
-        """View betting statistics"""
-        self.clear_screen()
-        
-        if not self.current_gambler_id:
-            print("✗ No gambler selected. Please select a gambler first.")
-            input("\nPress Enter to continue...")
-            return
-        
-        try:
-            stats = BettingService.get_betting_statistics(self.current_gambler_id)
-            
-            print("BETTING STATISTICS")
-            print("-" * 60)
-            print(f"Total Bets: {stats['total_bets']}")
-            print(f"Wins: {stats['win_count']}")
-            print(f"Losses: {stats['loss_count']}")
-            print(f"Unsettled: {stats['unsettled_count']}")
-            print(f"Total Wagered: ${stats['total_wagered']}")
-            print(f"Average Bet: ${stats['avg_bet']}")
-            
-            if stats['total_bets'] > 0:
-                win_rate = (stats['win_count'] / (stats['win_count'] + stats['loss_count'])) * 100 if (stats['win_count'] + stats['loss_count']) > 0 else 0
-                print(f"Win Rate: {win_rate:.1f}%")
-            
-        except DatabaseException as e:
-            print(f"✗ Database Error: {e}")
-        except Exception as e:
-            print(f"✗ Error: {e}")
-            logger.error(f"Error: {e}")
-        
-        input("\nPress Enter to continue...")
-    
-    def run_game_session(self):
-        """Run a game session with betting loop"""
-        self.clear_screen()
-        
-        if not self.current_gambler_id:
-            print("✗ No gambler selected. Please select a gambler first.")
-            input("\nPress Enter to continue...")
-            return
-        
-        try:
-            gambler = GamblerService.get_gambler_profile(self.current_gambler_id)
-            current_stake = StakeService.get_current_balance(self.current_gambler_id)
-            
-            print("START GAME SESSION")
-            print("-" * 60)
-            print(f"Gambler: {gambler['username']}")
-            print(f"Current Stake: ${current_stake}")
-            print(f"Win Threshold: ${gambler['win_threshold']}")
-            print(f"Loss Threshold: ${gambler['loss_threshold']}\n")
-            
-            # Start the session
+            # Start session and win/loss tracker
             session = SessionService.start_session(self.current_gambler_id)
             session_id = session['session_id']
-            
-            print(f"✓ Session started! (ID: {session_id})")
-            print(f"\nEnter 'stop' to end session manually.")
-            print("-" * 60)
-            
-            session_active = True
+            tracker = WinLossService()
             bet_count = 0
             
-            while session_active:
-                current_stake = BettingService.get_current_stake(self.current_gambler_id)
+            while True:
+                stake = BettingService.get_current_stake(self.current_gambler_id)
+                print(f"\n[Bet #{bet_count + 1}] Stake: ${stake}")
                 
-                print(f"\n[Bet #{bet_count + 1}] Current Stake: ${current_stake}")
-                
-                bet_amount_input = input("Bet Amount (or 'stop' to end): $").strip()
-                
-                if bet_amount_input.lower() == "stop":
-                    print("\n✓ Session ended manually.")
-                    SessionService.end_session(session_id, "MANUAL")
-                    session_active = False
+                amount_input = input("Bet ($) or 'stop': ").strip()
+                if amount_input.lower() == "stop":
                     break
                 
                 try:
-                    probability_input = input("Win Probability (0.0 to 1.0): ").strip()
+                    amount = Decimal(amount_input)
+                    prob = float(input("Probability (0-1): ").strip())
                     
-                    bet_amount = Decimal(bet_amount_input)
-                    win_probability = float(probability_input)
-                    
-                    # Place and resolve bet
+                    # Place bet
                     result = BettingService.place_and_resolve_bet(
-                        self.current_gambler_id,
-                        bet_amount,
-                        win_probability
+                        self.current_gambler_id, amount, prob
                     )
                     
-                    # Record bet in session
+                    # Record in session and track win/loss
                     SessionService.record_bet_in_session(session_id)
+                    tracker.record_game_outcome(
+                        session_id, self.current_gambler_id, result['bet_id'],
+                        result['is_win'], amount, result['stake_before'], 
+                        result['stake_after']
+                    )
                     
-                    # Display result
-                    print(f"\n{'🎉 WIN!' if result['is_win'] else '❌ LOSS'} - "
-                          f"Stake: ${result['stake_after']}")
+                    status = "🎉 WIN" if result['is_win'] else "❌ LOSS"
+                    print(f"{status} | Stake: ${result['stake_after']}")
                     
                     bet_count += 1
                     
                     # Check thresholds
                     if result['stake_after'] >= Decimal(gambler['win_threshold']):
-                        print(f"\n🏆 WIN THRESHOLD REACHED! Final Stake: ${result['stake_after']}")
+                        print(f"\n🏆 WIN THRESHOLD REACHED!")
                         SessionService.end_session(session_id, "WIN_THRESHOLD")
-                        session_active = False
+                        break
                     elif result['stake_after'] <= Decimal(gambler['loss_threshold']):
-                        print(f"\n💔 LOSS THRESHOLD REACHED! Final Stake: ${result['stake_after']}")
+                        print(f"\n💔 LOSS THRESHOLD REACHED!")
                         SessionService.end_session(session_id, "LOSS_THRESHOLD")
-                        session_active = False
-                    
+                        break
+                
                 except ValueError:
-                    print("✗ Invalid input. Please enter valid numbers.")
-                except ValidationException as e:
-                    print(f"✗ Validation Error: {e}")
-                    print("✗ Session ended due to error.")
-                    SessionService.end_session(session_id, "ERROR")
-                    session_active = False
+                    print("✗ Invalid input")
             
-            # Display session summary
-            print("\n" + "=" * 60)
-            print("SESSION SUMMARY")
-            print("=" * 60)
-            print(f"Total Bets: {bet_count}")
-            print(f"Final Stake: ${BettingService.get_current_stake(self.current_gambler_id)}")
-            
-        except ValidationException as e:
-            print(f"✗ Validation Error: {e}")
-        except DatabaseException as e:
-            print(f"✗ Database Error: {e}")
+            # End session
+            if bet_count > 0:
+                SessionService.end_session(session_id, "MANUAL")
+                stats = tracker.get_session_summary(session_id)
+                
+                print("\n" + "=" * 60)
+                print("SESSION SUMMARY")
+                print("=" * 60)
+                print(f"Total Bets: {stats['total_games']}")
+                print(f"Wins: {stats['total_wins']} | Losses: {stats['total_losses']}")
+                print(f"Win Rate: {stats['win_rate']:.1f}%")
+                print(f"Current Streak: {stats['current_win_streak'] if stats['current_win_streak'] > 0 else stats['current_loss_streak']} "
+                      f"({'W' if stats['current_win_streak'] > 0 else 'L'})")
+        
         except Exception as e:
             print(f"✗ Error: {e}")
-            logger.error(f"Error: {e}")
+            logger.error(f"Session error: {e}")
+    
+    def show_stats(self):
+        """Show simple statistics"""
+        print("\n📊 STATISTICS")
+        print("-" * 60)
         
-        input("\nPress Enter to continue...")
+        if not self.current_gambler_id:
+            print("✗ No gambler selected")
+            return
+        
+        try:
+            stake = StakeService.get_current_balance(self.current_gambler_id)
+            stats = WinLossService.get_gambler_overall_stats(self.current_gambler_id)
+            
+            print(f"Current Stake: ${stake}")
+            print(f"Total Games: {stats['total_games']}")
+            print(f"Wins: {stats['total_wins']} | Losses: {stats['total_losses']}")
+            print(f"Win Rate: {stats['win_rate']:.1f}%")
+            print(f"Total Net Change: ${stats['total_net_change']}")
+        
+        except Exception as e:
+            print(f"✗ Error: {e}")
     
     def run(self):
-        """Run the CLI"""
+        """Run CLI"""
         while True:
-            self.clear_screen()
-            self.show_main_menu()
-            
-            choice = input("Enter your choice (1-11): ").strip()
+            self.show_menu()
+            choice = input("\nChoice (1-6): ").strip()
             
             match choice:
                 case "1":
@@ -473,49 +238,18 @@ class GamblingCLI:
                 case "2":
                     self.select_gambler()
                 case "3":
-                    self.view_gambler_info()
+                    self.place_bet()
                 case "4":
-                    if self.current_gambler_id:
-                        try:
-                            StakeService.initialize_stake(self.current_gambler_id)
-                            print("\n✓ Stake initialized successfully!")
-                        except Exception as e:
-                            print(f"\n✗ Error: {e}")
-                        input("\nPress Enter to continue...")
-                    else:
-                        print("\n✗ No gambler selected. Please select a gambler first.")
-                        input("\nPress Enter to continue...")
+                    self.start_session()
                 case "5":
-                    self.place_single_bet()
+                    self.show_stats()
                 case "6":
-                    self.place_consecutive_bets()
-                case "7":
-                    self.view_betting_history()
-                case "8":
-                    self.view_stake_statistics()
-                case "9":
-                    self.view_betting_statistics()
-                case "10":
-                    self.run_game_session()
-                case "11":
-                    print("\n👋 Goodbye!")
+                    print("\n👋 Goodbye!\n")
                     break
                 case _:
-                    print("\n✗ Invalid choice. Please enter 1-11.")
-                    input("\nPress Enter to continue...")
-
-
-def main():
-    """Main entry point"""
-    try:
-        cli = GamblingCLI()
-        cli.run()
-    except KeyboardInterrupt:
-        print("\n\n👋 Goodbye!")
-    except Exception as e:
-        logger.error(f"Unexpected error: {e}")
-        print(f"✗ Unexpected error: {e}")
+                    print("✗ Invalid choice")
 
 
 if __name__ == "__main__":
-    main()
+    cli = GamblingCLI()
+    cli.run()

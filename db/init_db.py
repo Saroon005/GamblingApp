@@ -138,6 +138,33 @@ class Database:
             connection.commit()
             
             logger.info("✓ Table 'sessions' ready")
+            
+            create_game_records_table = """
+            CREATE TABLE IF NOT EXISTS game_records (
+                game_id INT PRIMARY KEY AUTO_INCREMENT,
+                session_id INT NOT NULL,
+                bet_id INT,
+                gambler_id INT NOT NULL,
+                outcome VARCHAR(20) NOT NULL,
+                payout_amount DECIMAL(10, 2),
+                loss_amount DECIMAL(10, 2),
+                net_change DECIMAL(10, 2) NOT NULL,
+                stake_before DECIMAL(10, 2) NOT NULL,
+                stake_after DECIMAL(10, 2) NOT NULL,
+                consecutive_win_streak INT DEFAULT 0,
+                consecutive_loss_streak INT DEFAULT 0,
+                resolved_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE,
+                FOREIGN KEY (gambler_id) REFERENCES gambler(gambler_id) ON DELETE CASCADE,
+                INDEX idx_session_id (session_id),
+                INDEX idx_gambler_id (gambler_id)
+            )
+            """
+            
+            cursor.execute(create_game_records_table)
+            connection.commit()
+            
+            logger.info("✓ Table 'game_records' ready")
         
         except Error as e:
             logger.error(f"✗ Error creating table: {e}")
