@@ -3,6 +3,7 @@ from modules.gambler.schemas import GamblerCreate
 from modules.gambler.service import GamblerService
 from modules.stake.service import StakeService
 from modules.betting.service import BettingService
+from modules.session.service import SessionService
 from core.logger import logger
 from core.exceptions import ValidationException, DatabaseException
 from decimal import Decimal
@@ -34,7 +35,8 @@ class GamblingCLI:
         print("7. View Betting History")
         print("8. View Stake Statistics")
         print("9. View Betting Statistics")
-        print("10. Exit")
+        print("10. Start Game Session")
+        print("11. Exit")
         print("\n" + "=" * 60)
     
     def create_gambler(self):
@@ -356,13 +358,114 @@ class GamblingCLI:
         
         input("\nPress Enter to continue...")
     
+    def run_game_session(self):
+        """Run a game session with betting loop"""
+        self.clear_screen()
+        
+        if not self.current_gambler_id:
+            print("✗ No gambler selected. Please select a gambler first.")
+            input("\nPress Enter to continue...")
+            return
+        
+        try:
+            gambler = GamblerService.get_gambler_profile(self.current_gambler_id)
+            current_stake = StakeService.get_current_balance(self.current_gambler_id)
+            
+            print("START GAME SESSION")
+            print("-" * 60)
+            print(f"Gambler: {gambler['username']}")
+            print(f"Current Stake: ${current_stake}")
+            print(f"Win Threshold: ${gambler['win_threshold']}")
+            print(f"Loss Threshold: ${gambler['loss_threshold']}\n")
+            
+            # Start the session
+            session = SessionService.start_session(self.current_gambler_id)
+            session_id = session['session_id']
+            
+            print(f"✓ Session started! (ID: {session_id})")
+            print(f"\nEnter 'stop' to end session manually.")
+            print("-" * 60)
+            
+            session_active = True
+            bet_count = 0
+            
+            while session_active:
+                current_stake = BettingService.get_current_stake(self.current_gambler_id)
+                
+                print(f"\n[Bet #{bet_count + 1}] Current Stake: ${current_stake}")
+                
+                bet_amount_input = input("Bet Amount (or 'stop' to end): $").strip()
+                
+                if bet_amount_input.lower() == "stop":
+                    print("\n✓ Session ended manually.")
+                    SessionService.end_session(session_id, "MANUAL")
+                    session_active = False
+                    break
+                
+                try:
+                    probability_input = input("Win Probability (0.0 to 1.0): ").strip()
+                    
+                    bet_amount = Decimal(bet_amount_input)
+                    win_probability = float(probability_input)
+                    
+                    # Place and resolve bet
+                    result = BettingService.place_and_resolve_bet(
+                        self.current_gambler_id,
+                        bet_amount,
+                        win_probability
+                    )
+                    
+                    # Record bet in session
+                    SessionService.record_bet_in_session(session_id)
+                    
+                    # Display result
+                    print(f"\n{'🎉 WIN!' if result['is_win'] else '❌ LOSS'} - "
+                          f"Stake: ${result['stake_after']}")
+                    
+                    bet_count += 1
+                    
+                    # Check thresholds
+                    if result['stake_after'] >= Decimal(gambler['win_threshold']):
+                        print(f"\n🏆 WIN THRESHOLD REACHED! Final Stake: ${result['stake_after']}")
+                        SessionService.end_session(session_id, "WIN_THRESHOLD")
+                        session_active = False
+                    elif result['stake_after'] <= Decimal(gambler['loss_threshold']):
+                        print(f"\n💔 LOSS THRESHOLD REACHED! Final Stake: ${result['stake_after']}")
+                        SessionService.end_session(session_id, "LOSS_THRESHOLD")
+                        session_active = False
+                    
+                except ValueError:
+                    print("✗ Invalid input. Please enter valid numbers.")
+                except ValidationException as e:
+                    print(f"✗ Validation Error: {e}")
+                    print("✗ Session ended due to error.")
+                    SessionService.end_session(session_id, "ERROR")
+                    session_active = False
+            
+            # Display session summary
+            print("\n" + "=" * 60)
+            print("SESSION SUMMARY")
+            print("=" * 60)
+            print(f"Total Bets: {bet_count}")
+            print(f"Final Stake: ${BettingService.get_current_stake(self.current_gambler_id)}")
+            
+        except ValidationException as e:
+            print(f"✗ Validation Error: {e}")
+        except DatabaseException as e:
+            print(f"✗ Database Error: {e}")
+        except Exception as e:
+            print(f"✗ Error: {e}")
+            logger.error(f"Error: {e}")
+        
+        input("\nPress Enter to continue...")
+    
     def run(self):
         """Run the CLI"""
         while True:
             self.clear_screen()
             self.show_main_menu()
             
-            choice = input("Enter your choice (1-10): ").strip()
+            choice = input("Enter your choice (1-11): ").strip()
             
             match choice:
                 case "1":
@@ -393,10 +496,12 @@ class GamblingCLI:
                 case "9":
                     self.view_betting_statistics()
                 case "10":
+                    self.run_game_session()
+                case "11":
                     print("\n👋 Goodbye!")
                     break
                 case _:
-                    print("\n✗ Invalid choice. Please enter 1-10.")
+                    print("\n✗ Invalid choice. Please enter 1-11.")
                     input("\nPress Enter to continue...")
 
 

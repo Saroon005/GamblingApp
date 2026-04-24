@@ -116,6 +116,28 @@ class Database:
             connection.commit()
             
             logger.info("✓ Table 'bets' ready")
+            
+            create_sessions_table = """
+            CREATE TABLE IF NOT EXISTS sessions (
+                session_id INT PRIMARY KEY AUTO_INCREMENT,
+                gambler_id INT NOT NULL,
+                status VARCHAR(50) NOT NULL,
+                end_reason VARCHAR(50),
+                starting_stake DECIMAL(10, 2) NOT NULL,
+                ending_stake DECIMAL(10, 2),
+                games_played INT DEFAULT 0,
+                started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                ended_at DATETIME,
+                FOREIGN KEY (gambler_id) REFERENCES gambler(gambler_id) ON DELETE CASCADE,
+                INDEX idx_gambler_id (gambler_id),
+                INDEX idx_status (status)
+            )
+            """
+            
+            cursor.execute(create_sessions_table)
+            connection.commit()
+            
+            logger.info("✓ Table 'sessions' ready")
         
         except Error as e:
             logger.error(f"✗ Error creating table: {e}")
